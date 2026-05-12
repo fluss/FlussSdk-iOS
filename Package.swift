@@ -23,12 +23,12 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "iOSBleSdk",
-            url: "https://github.com/fluss/FlussSdk-iOS/releases/download/v0.0.0/iOSBleSdk.xcframework.zip",
+            url: "https://github.com/fluss/FlussSdk-iOS/releases/download/v1.0.0/iOSBleSdk.xcframework.zip",
             checksum: "0000000000000000000000000000000000000000000000000000000000000000"
         ),
         .binaryTarget(
             name: "FlussPublicSdk",
-            url: "https://github.com/fluss/FlussSdk-iOS/releases/download/v0.0.0/FlussPublicSdk.xcframework.zip",
+            url: "https://github.com/fluss/FlussSdk-iOS/releases/download/v1.0.0/FlussPublicSdk.xcframework.zip",
             checksum: "0000000000000000000000000000000000000000000000000000000000000000"
         ),
     ]
