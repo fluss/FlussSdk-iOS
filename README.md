@@ -160,10 +160,7 @@ lifecycleScope.launch {
 * [`getWifi(...)`](#getwifi)
 * [`connectToWifi(...)`](#connecttowifi)
 * [`cleanup()`](#cleanup)
-* [Publishers / Flows](#publishers--flows)
-* [Types](#types)
-* [Errors](#errors)
-
+  
 </docgen-index>
 
 <docgen-api>
