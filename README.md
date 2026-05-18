@@ -46,7 +46,7 @@ Add the `FlussPublicSdk` product to your app target. Or in `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/fluss/FlussSdk-iOS", from: "1.0.1"),
+    .package(url: "https://github.com/fluss/FlussSdk-iOS", from: "1.0.3"),
 ],
 targets: [
     .target(
@@ -71,7 +71,7 @@ In your module's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("io.fluss:android-fluss-public-sdk:1.0.1")
+    implementation("io.fluss:android-fluss-public-sdk:1.0.3")
 }
 ```
 
