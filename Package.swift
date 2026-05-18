@@ -15,8 +15,8 @@ let package = Package(
     targets: [
         .binaryTarget(                                                                                                                                             
             name: "FlussPublicSdk",
-            url: "https://github.com/fluss/FlussSdk-iOS/releases/download/v1.0.1/FlussPublicSdk.xcframework.zip",                                                  
-            checksum: "b50be6466b4047dfe66f85a0467bf96d4de010bea518325dbace27e3b5cb9794"                                                                                                                        
+            url: "https://github.com/fluss/FlussSdk-iOS/releases/download/v1.0.3/FlussPublicSdk.xcframework.zip",                                                  
+            checksum: "ccb315878557370fa7dec1f3290d8306150f31ce958b4863aad8044635022d11"                                                                                                                        
         ),
     ]                                                                                                                                                              
 )  
