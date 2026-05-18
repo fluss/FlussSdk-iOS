@@ -160,7 +160,10 @@ lifecycleScope.launch {
 * [`getWifi(...)`](#getwifi)
 * [`connectToWifi(...)`](#connecttowifi)
 * [`cleanup()`](#cleanup)
-  
+* [Publishers / Flows](#publishers--flows)
+* [Types](#types)
+* [Errors](#errors)
+
 </docgen-index>
 
 <docgen-api>
@@ -170,7 +173,7 @@ lifecycleScope.launch {
 **iOS**
 
 ```swift
-init(apiKey: String, apiRoot: String? = nil, log: Bool = false) async throws
+init(apiKey: String, log: Bool = false) async throws
 ```
 
 **Android**
@@ -179,7 +182,6 @@ init(apiKey: String, apiRoot: String? = nil, log: Bool = false) async throws
 suspend fun FlussPublicSdk.create(
     context: Context,
     apiKey: String,
-    apiRoot: String? = null,
     log: Boolean = false,
 ): FlussPublicSdk
 ```
@@ -195,7 +197,6 @@ Scanning starts automatically once Bluetooth is ready.
 | Param | Type | Description |
 | --- | --- | --- |
 | **`apiKey`** | <code>String</code> | Your Fluss API key. Issued from the Fluss dashboard. |
-| **`apiRoot`** | <code>String?</code> | Optional override for the Fluss API root. Defaults to the production endpoint. |
 | **`log`** | <code>Bool</code> | When `true`, scan/write/trigger events are best-effort reported to the Fluss backend. Logger failures never block BLE operations. Default `false`. |
 
 **Throws** `FlussPublicSdkError.noConnectivityAndNoCache` (iOS) /
@@ -386,29 +387,159 @@ teardown.
 
 ### Publishers / Flows
 
-All event streams are exposed as properties on the SDK instance. Subscribe early —
-ideally immediately after init. `bluetoothReady` emits its current value on subscribe;
-the rest deliver events as they occur.
+All event streams are properties on the SDK instance. Subscribe immediately after
+`init` / `create` — events fire as they happen and are not replayed, except for
+`bluetoothReady` which always replays its current value to new subscribers.
 
-| Stream | iOS type | Android type | Emits |
-| --- | --- | --- | --- |
-| **`bluetoothReady`** | <code>CurrentValueSubject&lt;Bool, Never&gt;</code> | <code>StateFlow&lt;Boolean&gt;</code> | Bluetooth-adapter readiness. |
-| **`discoveredDevices`** | <code>PassthroughSubject&lt;(Device, Int), Never&gt;</code> | <code>SharedFlow&lt;Pair&lt;Device, Int&gt;&gt;</code> | `(device, rssi)` for each advertisement. `rssi == 0` is a "device went away" sentinel after 2 s without an advertisement. |
-| **`connectionState`** | <code>PassthroughSubject&lt;(Device, ConnectionState), Never&gt;</code> | <code>SharedFlow&lt;Pair&lt;Device, ConnectionState&gt;&gt;</code> | Per-device connection-state transitions. |
-| **`deviceNotifications`** | <code>PassthroughSubject&lt;(String, String), Never&gt;</code> | <code>SharedFlow&lt;Pair&lt;String, String&gt;&gt;</code> | `(deviceName, hexPayload)` for asynchronous device responses. |
-| **`bluetoothDenied`** | <code>PassthroughSubject&lt;Bool, Never&gt;</code> | <code>SharedFlow&lt;Boolean&gt;</code> | Fires when the OS reports that Bluetooth permission has been denied. |
+| Property | iOS type | Android type |
+| --- | --- | --- |
+| `bluetoothReady` | `CurrentValueSubject<Bool, Never>` | `StateFlow<Boolean>` |
+| `discoveredDevices` | `PassthroughSubject<(Device, Int), Never>` | `SharedFlow<Pair<Device, Int>>` |
+| `connectionState` | `PassthroughSubject<(Device, ConnectionState), Never>` | `SharedFlow<Pair<Device, ConnectionState>>` |
+| `deviceNotifications` | `PassthroughSubject<(String, String), Never>` | `SharedFlow<Pair<String, String>>` |
+| `bluetoothDenied` | `PassthroughSubject<Bool, Never>` | `SharedFlow<Boolean>` |
+
+---
+
+#### `bluetoothReady`
+
+Emits `true` when the system Bluetooth adapter is powered on and ready, `false`
+otherwise. Unlike the other streams this is a `CurrentValueSubject` / `StateFlow`, so
+a new subscriber immediately receives the current adapter state without waiting for the
+next change.
 
 ```swift
 // iOS
-sdk.discoveredDevices
-    .sink { device, rssi in /* ... */ }
+sdk.bluetoothReady
+    .sink { ready in print("Bluetooth adapter ready: \(ready)") }
     .store(in: &cancellables)
 ```
 
 ```kotlin
 // Android
 lifecycleScope.launch {
-    sdk.discoveredDevices.collect { (device, rssi) -> /* ... */ }
+    sdk.bluetoothReady.collect { ready ->
+        Log.d("Fluss", "Bluetooth adapter ready: $ready")
+    }
+}
+```
+
+---
+
+#### `discoveredDevices`
+
+Fires `(device, rssi)` each time an authorised device advertises. `rssi` is the signal
+strength in dBm (a negative integer — closer to zero means stronger signal). The SDK
+uses RSSI to auto-connect to the nearest device.
+
+`rssi == 0` is a **sentinel value** meaning the device has stopped advertising (no
+advertisement seen for ~2 seconds). Use it to remove the device from any UI list.
+
+```swift
+// iOS
+sdk.discoveredDevices
+    .sink { device, rssi in
+        if rssi == 0 {
+            // device went away
+        } else {
+            print("\(device.getName() ?? "unknown") at \(rssi) dBm")
+        }
+    }
+    .store(in: &cancellables)
+```
+
+```kotlin
+// Android
+lifecycleScope.launch {
+    sdk.discoveredDevices.collect { (device, rssi) ->
+        if (rssi == 0) {
+            // device went away
+        } else {
+            Log.d("Fluss", "${device.getName()} at $rssi dBm")
+        }
+    }
+}
+```
+
+---
+
+#### `connectionState`
+
+Emits `(device, state)` each time a device transitions connection state. Possible
+states are defined in [`ConnectionState`](#connectionstate). Wait for `.connected` /
+`CONNECTED` before calling `write`, `trigger`, `getWifi`, or `connectToWifi`.
+
+```swift
+// iOS
+sdk.connectionState
+    .filter { _, state in state == .connected }
+    .sink { device, _ in
+        Task { await sdk.trigger(deviceName: device.getName() ?? "") }
+    }
+    .store(in: &cancellables)
+```
+
+```kotlin
+// Android
+lifecycleScope.launch {
+    sdk.connectionState
+        .filter { (_, state) -> state == ConnectionState.CONNECTED }
+        .collect { (device, _) ->
+            sdk.trigger(device.getName()) { success, message, _, _ -> }
+        }
+}
+```
+
+---
+
+#### `deviceNotifications`
+
+Emits `(deviceName, hexPayload)` when a device sends an asynchronous BLE notification.
+This is the delivery channel for responses to `getWifi` (SSID list) and `connectToWifi`
+(join result) — those methods only confirm the request was dispatched; the actual result
+arrives here.
+
+`hexPayload` is a lowercase hex string of the raw bytes sent by the device firmware.
+
+```swift
+// iOS
+sdk.deviceNotifications
+    .sink { deviceName, hexPayload in
+        print("\(deviceName) notified: \(hexPayload)")
+    }
+    .store(in: &cancellables)
+```
+
+```kotlin
+// Android
+lifecycleScope.launch {
+    sdk.deviceNotifications.collect { (deviceName, hexPayload) ->
+        Log.d("Fluss", "$deviceName notified: $hexPayload")
+    }
+}
+```
+
+---
+
+#### `bluetoothDenied`
+
+Fires `true` when the OS reports that the user has denied Bluetooth permission.
+Use this to show an in-app prompt directing the user to Settings.
+
+```swift
+// iOS
+sdk.bluetoothDenied
+    .filter { $0 }
+    .sink { _ in showBluetoothPermissionAlert() }
+    .store(in: &cancellables)
+```
+
+```kotlin
+// Android
+lifecycleScope.launch {
+    sdk.bluetoothDenied.collect { denied ->
+        if (denied) showBluetoothPermissionRationale()
+    }
 }
 ```
 
@@ -533,4 +664,4 @@ device. You don't need to do this yourself.
 
 ## License
 
-Proprietary. © Fluss
+Proprietary. © Fluss.
